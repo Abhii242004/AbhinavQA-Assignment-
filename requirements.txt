@@ -1,0 +1,10 @@
+streamlit
+fastapi
+uvicorn
+chromadb
+langchain
+unstructured
+pymupdf
+beautifulsoup4
+selenium
+sentence-transformers
