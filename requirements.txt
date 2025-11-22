@@ -1,10 +1,8 @@
-streamlit
 fastapi
 uvicorn
-chromadb
-langchain
-unstructured
-pymupdf
+pydantic
 beautifulsoup4
-selenium
+lxml
+requests
+chromadb
 sentence-transformers
