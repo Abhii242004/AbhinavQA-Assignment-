@@ -1,29 +1,38 @@
-# --- STAGE 1: BUILDER ---
-# Use a full Python image for the build stage to ensure all dependencies compile correctly.
+# --- STAGE 1: BUILDER (The Heavy Lifter) ---
+# Use a full Python image for stability during compilation.
 FROM python:3.11 AS builder
 
 # Set the working directory
 WORKDIR /app
 
-# Install system dependencies (needed for compiling Python packages like scipy/numpy/lxml)
+# Install minimum system dependencies needed for compiling ML packages
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install packages into a virtual environment
 COPY requirements.txt .
-# Use venv for a cleaner separation, which will be copied later.
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-# Install Python dependencies with a generous timeout
+# Install Python dependencies with a generous timeout.
+# This step pulls in the massive dependencies, including GPU libraries.
 RUN pip install --no-cache-dir --timeout 300 -r requirements.txt
 
+# --- CRITICAL STEP: PRUNING LARGE FILES ---
+# We delete the massive CUDA/NVIDIA files (which are not needed on Railway's CPU instances)
+# and clean up the pip cache to drastically shrink the final image size.
+RUN find /venv/ -name "libcuda*" -delete && \
+    find /venv/ -name "libcudnn*" -delete && \
+    find /venv/ -name "libcublas*" -delete && \
+    find /venv/ -name "nvidia*" -delete && \
+    find /venv/ -name "torch_cuda*" -delete && \
+    rm -rf /root/.cache/pip
 
-# --- STAGE 2: FINAL IMAGE ---
+# --- STAGE 2: FINAL IMAGE (The Minimal Runner) ---
 # Use a minimal, slim Python image for the final, deployed image.
-# We explicitly avoid installing system build tools here.
 FROM python:3.11-slim
 
 # Set environment variables
@@ -36,8 +45,8 @@ WORKDIR /app
 # Copy the application code
 COPY . .
 
-# Copy the *pre-built* virtual environment from the builder stage
-# This is the crucial step that skips the slow install process and discards all build tools.
+# Copy the *pre-built and PRUNED* virtual environment from the builder stage
+# This should now be significantly smaller (hundreds of MBs vs multiple GBs).
 COPY --from=builder /venv /venv
 ENV PATH="/venv/bin:$PATH"
 
