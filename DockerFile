@@ -1,0 +1,46 @@
+# --- STAGE 1: BUILDER ---
+# Use a full Python image for the build stage to ensure all dependencies compile correctly.
+FROM python:3.11 AS builder
+
+# Set the working directory
+WORKDIR /app
+
+# Install system dependencies (needed for compiling Python packages like scipy/numpy/lxml)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install packages into a virtual environment
+COPY requirements.txt .
+# Use venv for a cleaner separation, which will be copied later.
+RUN python -m venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+# Install Python dependencies with a generous timeout
+RUN pip install --no-cache-dir --timeout 300 -r requirements.txt
+
+
+# --- STAGE 2: FINAL IMAGE ---
+# Use a minimal, slim Python image for the final, deployed image.
+# We explicitly avoid installing system build tools here.
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE 1
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the application code
+COPY . .
+
+# Copy the *pre-built* virtual environment from the builder stage
+# This is the crucial step that skips the slow install process and discards all build tools.
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+# Define the command to run your application
+# The host/port are picked up automatically by Railway.
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "$PORT"]
